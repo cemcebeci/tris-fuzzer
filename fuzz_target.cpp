@@ -114,3 +114,18 @@ extern "C" int LLVMFuzzerTestOneInput(const char *Data, size_t Size) {
     // playEntity play;
     return 0;
 }
+
+
+/* -------------------------------------------------------------------------- */
+/*                 What we expect to be in the exported header                */
+/* -------------------------------------------------------------------------- */
+
+// #if defined(RLC_VISIT_ACTION)
+//     #define RLC_VISIT_ARGS_play_mark_(arg_visitor, separator)\
+//       arg_visitor(x, int64_t) separator\
+//       arg_visitor(y, int64_t)
+//     #define RLC_VISIT_SUBACTIONS_play(subaction_visitor, separator)\
+//       subaction_visitor(mark, 0, RLC_VISIT_ARGS_play_mark_, markplayEntity_int64_t_int64_t_)
+//     RLC_VISIT_ACTION(play, RLC_VISIT_SUBACTIONS_play)
+//   #undef RLC_VISIT_ACTION
+// #endif
