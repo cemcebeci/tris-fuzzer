@@ -4,7 +4,7 @@ TRIS=/home/ccebeci/rlc/rlc-infrastructure/rlc/tool/rlc/test/tris.rl
 all: main
 
 main: include/tris.h obj/tris.o
-	clang++ fuzz_target.cpp include/tris.h obj/tris.o
+	clang++ fuzz_target.cpp include/tris.h obj/tris.o -DRLC_ACTION=play
 	
 include/tris.h: $(TRIS)
 	$(RLC) $(TRIS) --header -o include/tris.h

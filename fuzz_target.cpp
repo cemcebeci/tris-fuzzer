@@ -21,7 +21,7 @@ extern "C" {
 /* -------------------------------------------------------------------------- */
 
 /*
-    This enum is popuplated with the names of all actions exported by RLC.
+    This enum is populated with the names of all actions exported by RLC.
 */
 enum RLC_Action {
     #define RLC_VISIT_ACTION(action_name, ...) \
@@ -36,7 +36,7 @@ enum RLC_Action {
 */
 enum RLC_Subaction {
     #define select_name_visitor(subaction_name, resume_index, ...) subaction_name
-    #define RLC_VISIT_ACTION(action_name, entity_type, visit_subactions) \
+    #define RLC_VISIT_ACTION(action_name, entity_type, start_function, isdone_function, visit_subactions) \
         visit_subactions(select_name_visitor, ),
     #include "include/tris.h"
 };
@@ -69,17 +69,21 @@ enum RLC_Subaction {
         invoker(&entity, visit_args(select_arg_references_visitor, COMMA));\
     }
 
-#define RLC_VISIT_ACTION(action_name, entity_type, visit_subactions) \
+#define RLC_VISIT_ACTION(action_name, entity_type, start_function, isdone_function, visit_subactions) \
     visit_subactions(generate_executor_visitor, )
 #include "include/tris.h"
 /* -------------------------------------------------------------------------- */
 
+/* ------------------- Generate list_available_subactions ------------------- */
+/*
+    This section expands to a LIST_AVAILABLE_SUBACTIONS(&entity_type) function for each action exported by RLC.
+*/
 #define check_index_and_emplace_visitor(name, subaction_resume_index, ...)\
         if(subaction_resume_index == entity.resume_index){\
             result.emplace_back(name);\
         }
 #define LIST_AVAILABLE_SUBACTIONS list_available_subactions
-#define RLC_VISIT_ACTION(action_name, entity_type, visit_subactions) \
+#define RLC_VISIT_ACTION(action_name, entity_type, start_function, isdone_function, visit_subactions) \
     std::vector<RLC_Subaction> LIST_AVAILABLE_SUBACTIONS(entity_type &entity) {\
         std::vector<RLC_Subaction> result;\
         visit_subactions(check_index_and_emplace_visitor, )\
@@ -90,49 +94,62 @@ enum RLC_Subaction {
         return result;\
     }
 #include "include/tris.h"
+/* -------------------------------------------------------------------------- */
 
+// This function is action-agnostic since it operates on a vector of enum entries. 
 RLC_Subaction pick_subaction(std::vector<RLC_Subaction> options) {
     return options.at(rand() % options.size());
 }
 
-int main() {
-    playEntity p;
-    playplayEntity_(&p);
-
-    uint8_t isDone = false;
-    while(!isDone) {
-        std::cout << "-------------------\n";
-        auto available_subactions = list_available_subactions(p);
-        #ifndef NO_DEBUG
-            std::cout << "Available subactions: \n";
-            for(auto subaction : available_subactions) {
-                std::cout << subaction << "\n"; //TODO would be nice if this printed the name.
-            }
-            std::cout << "\n";
-        #endif
-
-        RLC_Subaction subaction = pick_subaction(available_subactions);
-        #ifndef NO_DEBUG
-            std::cout << "Picked subaction: " << subaction << "\n\n";
-        #endif
-
-        switch (subaction) {
-            #define test_and_call_executor_visitor(subaction_name, ...)\
+/* ----------------------- Generate action simulators ----------------------- */
+/*
+    This section expands to a simulate_ACTION_NAME function for each exported action.
+    These functions run a full simulation of the action, currently using random numbers but ultimately using fuzz input.
+*/
+#define SIMULATE(action_name) simulate_ ## action_name
+#define call_executor_case_visitor(subaction_name, ...)\
                 case subaction_name:\
-                    EXECUTOR_NAME(subaction_name)(p); break;
-            #define RLC_VISIT_ACTION(action_name, entity_type, visit_subactions)\
-                visit_subactions(test_and_call_executor_visitor, )
-            #include "include/tris.h"
-        }
-        is_donebool_playEntity_(&isDone, &p);
-        std::cout << "-------------------\n";
+                    EXECUTOR_NAME(subaction_name)(entity); break;
+
+#define RLC_VISIT_ACTION(action_name, entity_type, start_function, isdone_function, visit_subactions)\
+    void SIMULATE(action_name) () {\
+        entity_type entity;\
+        start_function(&entity);\
+        \
+        uint8_t isDone = false;\
+            while(!isDone) {\
+            std::cout << "-------------------\n";\
+            auto available_subactions = LIST_AVAILABLE_SUBACTIONS(entity);\
+            std::cout << "Available subactions: \n";\
+            for(auto subaction : available_subactions) {\
+                std::cout << subaction << "\n";\
+            }\
+            std::cout << "\n";\
+            \
+            RLC_Subaction subaction = pick_subaction(available_subactions);\
+            std::cout << "Picked subaction: " << subaction << "\n\n";\
+            \
+            switch (subaction) {\
+                visit_subactions(call_executor_case_visitor, )\
+            }\
+            isdone_function(&isDone, &entity);\
+            std::cout << "-------------------\n";\
+        }\
     }
-    return 0;
+#include "include/tris.h"
+/* -------------------------------------------------------------------------- */
+
+int main() {
+    #ifndef RLC_ACTION
+    std::cout << "Define the macro RLC_ACTION before compiling " __FILE__ "!\n";
+    #else   
+    #define SIMULATE_PRIMITIVE(name) SIMULATE(name)
+    SIMULATE_PRIMITIVE(RLC_ACTION)();
+    #endif
 }
 
 
 extern "C" int LLVMFuzzerTestOneInput(const char *Data, size_t Size) {
-    // playEntity play;
     return 0;
 }
 
@@ -148,7 +165,7 @@ extern "C" int LLVMFuzzerTestOneInput(const char *Data, size_t Size) {
 //       arg_visitor(y, int64_t)
 //     #define RLC_VISIT_SUBACTIONS_play(subaction_visitor, separator)\
 //       subaction_visitor(mark, 1, playEntity, RLC_VISIT_ARGS_play_mark_, markplayEntity_int64_t_int64_t_, can_mark_playEntity_)
-//     RLC_VISIT_ACTION(play, playEntity, RLC_VISIT_SUBACTIONS_play)
+//     RLC_VISIT_ACTION(play, playEntity, playplayEntity_, is_donebool_playEntity_, RLC_VISIT_SUBACTIONS_play)
 //   #undef RLC_VISIT_ACTION
 // #endif
 
