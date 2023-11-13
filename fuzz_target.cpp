@@ -20,6 +20,9 @@ extern "C" {
 /*                          What we put in the fuzzer                         */
 /* -------------------------------------------------------------------------- */
 
+/*
+    This enum is popuplated with the names of all actions exported by RLC.
+*/
 enum RLC_Action {
     #define RLC_VISIT_ACTION(action_name, ...) \
         action_name,
@@ -27,59 +30,66 @@ enum RLC_Action {
     RLC_ACTION_UNKNOWN
 };
 
+/*
+    This enum is popuplated with the names of all subactions of all actions exported by RLC.
+    TODO: There might be name clashes, we might want to prepend subaction names with the aciton name.
+*/
 enum RLC_Subaction {
     #define select_name_visitor(subaction_name, resume_index, ...) subaction_name
-    #define RLC_VISIT_ACTION(action_name, visit_subactions) \
+    #define RLC_VISIT_ACTION(action_name, entity_type, visit_subactions) \
         visit_subactions(select_name_visitor, ),
     #include "include/tris.h"
 };
 
 /* --------------------- Generate subaction executors ------------------------ */
+/*
+    This section exapands to an "executor" function for each subaction of each action exported by RLC.
+    These functions receive a reference to an action entity of their parent action.
+    They pick arguments for the corresponding subaction, then call the subaction's wrapper function.
+*/
 #define declare_args_visitor(name, type) type name;
 #define assign_args_visitor(name, type) name = (rand() % (int)(pow(2,sizeof(type)))); 
-#define print_assigned_args_visitor(name, size) std::cout << #name << ": " << name << "\n";
+// #define print_assigned_args_visitor(name, size) std::cout << #name << ": " << name << "\n";
 #define select_arg_references_visitor(name, size) &name
 #define select_arg_names_visitor(name, size) name 
 #define COMMA ,
 #define EXECUTOR_NAME(subaction_name) subaction_name ## _execute
-#define generate_executor_visitor(subaction_name, subaction_resume_index, visit_args, invoker, tester)\
-    void EXECUTOR_NAME(subaction_name)(playEntity &p){\
+#define generate_executor_visitor(subaction_name, subaction_resume_index, action_entity_type, visit_args, invoker, tester)\
+    void EXECUTOR_NAME(subaction_name)(action_entity_type &entity){\
         visit_args(declare_args_visitor, )\
         uint8_t args_are_valid = false;\
         int discarded_arg_count = -1;\
         do {\
         discarded_arg_count ++; \
         visit_args(assign_args_visitor, )\
-        tester(&args_are_valid , &p, visit_args(select_arg_references_visitor, COMMA));\
+        tester(&args_are_valid , &entity, visit_args(select_arg_references_visitor, COMMA));\
         } while( !args_are_valid);\
         std::cout << "Number of discarded argument sets: " << discarded_arg_count << "\n";\
         std::cout << "Invoking subaction " #subaction_name "(" << visit_args(select_arg_names_visitor, << ", " <<) << ")\n";\
-        invoker(&p, visit_args(select_arg_references_visitor, COMMA));\
+        invoker(&entity, visit_args(select_arg_references_visitor, COMMA));\
     }
 
-#define RLC_VISIT_ACTION(action_name, visit_subactions) \
+#define RLC_VISIT_ACTION(action_name, entity_type, visit_subactions) \
     visit_subactions(generate_executor_visitor, )
 #include "include/tris.h"
 /* -------------------------------------------------------------------------- */
 
-std::vector<RLC_Subaction> list_available_subactions(playEntity &p) {
-    std::vector<RLC_Subaction> result;
-    #define check_index_and_emplace_visitor(name, subaction_resume_index, ...)\
-        if(subaction_resume_index == p.resume_index){\
+#define check_index_and_emplace_visitor(name, subaction_resume_index, ...)\
+        if(subaction_resume_index == entity.resume_index){\
             result.emplace_back(name);\
         }
-    
-    #define RLC_VISIT_ACTION(action_name, visit_subactions) \
-        visit_subactions(check_index_and_emplace_visitor, )
-    
-    #include "include/tris.h"
-
-    if(result.empty()) {
-        std::cout << "No available subactions for resume_index: " << p.resume_index << "!\n";
+#define LIST_AVAILABLE_SUBACTIONS list_available_subactions
+#define RLC_VISIT_ACTION(action_name, entity_type, visit_subactions) \
+    std::vector<RLC_Subaction> LIST_AVAILABLE_SUBACTIONS(entity_type &entity) {\
+        std::vector<RLC_Subaction> result;\
+        visit_subactions(check_index_and_emplace_visitor, )\
+        \
+        if(result.empty()) {\
+            std::cout << "No available subactions for resume_index: " << entity.resume_index << "!\n" << "for action " #action_name;\
+        }\
+        return result;\
     }
-
-    return result;
-}
+#include "include/tris.h"
 
 RLC_Subaction pick_subaction(std::vector<RLC_Subaction> options) {
     return options.at(rand() % options.size());
@@ -110,7 +120,7 @@ int main() {
             #define test_and_call_executor_visitor(subaction_name, ...)\
                 case subaction_name:\
                     EXECUTOR_NAME(subaction_name)(p); break;
-            #define RLC_VISIT_ACTION(action_name, visit_subactions)\
+            #define RLC_VISIT_ACTION(action_name, entity_type, visit_subactions)\
                 visit_subactions(test_and_call_executor_visitor, )
             #include "include/tris.h"
         }
@@ -128,17 +138,17 @@ extern "C" int LLVMFuzzerTestOneInput(const char *Data, size_t Size) {
 
 
 
-// /* -------------------------------------------------------------------------- */
-// /*                 What we expect to be in the exported header                */
-// /* -------------------------------------------------------------------------- */
+/* -------------------------------------------------------------------------- */
+/*                 What we expect to be in the exported header                */
+/* -------------------------------------------------------------------------- */
 
 // #if defined(RLC_VISIT_ACTION)
 //     #define RLC_VISIT_ARGS_play_mark_(arg_visitor, separator)\
 //       arg_visitor(x, int64_t) separator\
 //       arg_visitor(y, int64_t)
 //     #define RLC_VISIT_SUBACTIONS_play(subaction_visitor, separator)\
-//       subaction_visitor(mark, 1, RLC_VISIT_ARGS_play_mark_, markplayEntity_int64_t_int64_t_, can_mark_playEntity_)
-//     RLC_VISIT_ACTION(play, RLC_VISIT_SUBACTIONS_play)
+//       subaction_visitor(mark, 1, playEntity, RLC_VISIT_ARGS_play_mark_, markplayEntity_int64_t_int64_t_, can_mark_playEntity_)
+//     RLC_VISIT_ACTION(play, playEntity, RLC_VISIT_SUBACTIONS_play)
 //   #undef RLC_VISIT_ACTION
 // #endif
 
