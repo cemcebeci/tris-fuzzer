@@ -10,4 +10,4 @@ include/tris.h: $(TRIS)
 	$(RLC) $(TRIS) --header -o include/tris.h
 
 obj/tris.o: $(TRIS)
-	$(RLC) $(TRIS) -o obj/tris.o -O2 --compile
+	$(RLC) $(TRIS) -o obj/tris.o -O2 --compile --emit-precondition-checks
